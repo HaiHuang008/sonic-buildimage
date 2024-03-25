@@ -27,7 +27,7 @@
         {
             "bmc":
             {
-                "valmap": {"1":"INTAKE", "0":"EXHAUST"}
+                "valmap": {"1":"INTAKE", "0":"EXHAUST", "255": "N/A"}
             },
             "i2c":
             {

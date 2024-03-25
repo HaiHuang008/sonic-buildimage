@@ -41,7 +41,7 @@ class SsdUtil(SsdBase):
         self.serial = self._parse_re(r'Serial Number:\s*(.+?)\n', self.ssd_info)
         self.firmware = self._parse_re(r'FW Version:\s*(.+?)\n', self.ssd_info)
         self.temperature = self._parse_re(r'Temperature\s*\[\s*(.+?)\]', self.ssd_info)
-        self.health = self._parse_re(r'Health:\s*(.+?)', self.ssd_info)
+        self.health = self._parse_re(r'Health:\s*(.+?)%', self.ssd_info)
 
     @staticmethod
     def _execute_shell(cmd):
