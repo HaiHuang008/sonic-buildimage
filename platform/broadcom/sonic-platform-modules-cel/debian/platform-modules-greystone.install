@@ -1,7 +1,0 @@
-greystone/systemd/pddf-platform-init.service etc/systemd/system
-greystone/service/greystone-pddf-platform-monitor.service lib/systemd/system
-greystone/scripts/pddf_pre_driver_install.sh usr/local/bin
-greystone/scripts/pddf_post_device_create.sh usr/local/bin
-greystone/utils/pddf_sensor_list_refresh.py usr/local/bin
-greystone/pddf/sonic_platform-1.0-py3-none-any.whl usr/share/sonic/device/x86_64-cel_ds4101-r0/pddf
-services/platform_api/platform_api_mgnt.sh usr/local/bin

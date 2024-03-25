@@ -1,5 +1,5 @@
 [Unit]
-Description=Greystone Platform Monitoring service
+Description=DS4101 Platform Monitoring service
 After=networking.service
 Before=pddf-platform-init.service
 DefaultDependencies=no

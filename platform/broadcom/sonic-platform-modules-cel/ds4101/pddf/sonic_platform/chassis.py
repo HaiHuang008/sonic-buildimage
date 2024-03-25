@@ -19,6 +19,7 @@ except ImportError as e:
 
 SET_SYS_STATUS_LED = "0x3A 0x39 0x2 0x0 {}"
 SET_LED_MODE_Manual = "0x3a 0x42 0x02 0x00"
+SET_LED_MODE_Auto = "0x3a 0x42 0x02 0x01"
 REBOOT_CAUSE_PATH = "/sys/devices/platform/cpld_wdt/reason"
 
 class Chassis(PddfChassis):
@@ -64,6 +65,7 @@ class Chassis(PddfChassis):
 
         status, res = self.helper.ipmi_raw(SET_LED_MODE_Manual)
         if status != 0:
+            self.helper.ipmi_raw(SET_LED_MODE_Auto)
             return False
 
         color_val = "0x1"
@@ -73,7 +75,7 @@ class Chassis(PddfChassis):
             color_val = "0x2"
 
         status, res = self.helper.ipmi_raw(SET_SYS_STATUS_LED.format(color_val))
-
+        self.helper.ipmi_raw(SET_LED_MODE_Auto)
         return True if status else False
 
     def get_sfp(self, index):
@@ -120,16 +122,25 @@ class Chassis(PddfChassis):
         reboot_cause = self.helper.read_txt_file(REBOOT_CAUSE_PATH) or "Unknown"
 
         reboot_cause_description = {
-            '0x11': (self.REBOOT_CAUSE_POWER_LOSS, "Power Loss"),
-            '0x22': (self.REBOOT_CAUSE_NON_HARDWARE, "The last reset is soft-set CPU warm reset"),
-            '0x33': (self.REBOOT_CAUSE_NON_HARDWARE, "The last reset is CPU cold reset"),
+            '0x11': (self.REBOOT_CAUSE_POWER_LOSS, "The last reset is Power on reset."),
+            '0x22': (self.REBOOT_CAUSE_HARDWARE_CPU, "The last reset is soft-set CPU warm reset"),
+            '0x33': (self.REBOOT_CAUSE_HARDWARE_OTHER, "The last reset is CPU cold reset"),
             '0x44': (self.REBOOT_CAUSE_NON_HARDWARE, "The last reset is CPU warm reset"),
             '0x66': (self.REBOOT_CAUSE_WATCHDOG, "The last reset is Hardware Watchdog Reset"),
+            '0x77': (self.REBOOT_CAUSE_HARDWARE_CPU, "The last reset is power cycle reset"),
 
         }
         prev_reboot_cause = reboot_cause_description.get(reboot_cause,
                                                          (self.REBOOT_CAUSE_NON_HARDWARE, "Unknown reason"))
         return prev_reboot_cause
+
+    def get_revision(self):
+        version_str = self._eeprom.revision_str()
+
+        if version_str != "NA":
+            return str(bytearray(version_str, 'ascii')[0])
+
+        return version_str
 
     def get_watchdog(self):
         """

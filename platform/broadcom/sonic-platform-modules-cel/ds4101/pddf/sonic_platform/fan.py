@@ -11,9 +11,10 @@ except ImportError as e:
     raise ImportError(str(e) + "- required module not found")
 
 Fan_Direction_Cmd = "0x3a 0x62 {}"
-Set_Pwm_Cmd = "0x3a 0x26 0x02 {} {}"
-Disable_Fcs_mode = "0x3a 0x26 0x01 0x00"
+Set_Pwm_Cmd = "0x3a 0x63 0x02 {} {}"
+Disable_Fcs_mode = "0x3a 0x63 0x01 0x00"
 Led_Manual_Control = "0x3a 0x42 0x02 0x00"
+Led_Auto_Control = "0x3a 0x42 0x02 0x01"
 Set_Led_Color = "0x3a 0x39 0x02 {} {}"
 
 
@@ -45,10 +46,24 @@ class Fan(PddfFan):
 
         return super().get_direction()
 
+    def get_speed_rpm(self):
+        """
+        Retrieves the speed of fan in RPM
+        (cause of the conversion, it needs to * 157)
+
+        Returns:
+            An integer, Speed of fan in RPM
+        """
+        rpm_speed = super().get_speed_rpm()
+        if self.is_psu_fan:
+            return rpm_speed
+        else:
+            return (rpm_speed * 157)
+
     def get_speed(self):
         """
         Obtain the fan speed ratio (rpm/max rpm) according to the fan maximum rpm in the pd-plugin.json file
-        (cause of the conversion, it needs to * 150)
+
 
         returns: if the value > 100, return the value of rpm. else return Speed/percentage of maximum speed.
         """
@@ -59,7 +74,6 @@ class Fan(PddfFan):
             psu_speed_percentage = round(speed_rpm / max_psu_fan_rpm * 100)
             return speed_rpm if psu_speed_percentage > 100 else psu_speed_percentage
 
-        speed_rpm = speed_rpm * 150
         # if use 'get_direction' to get the fan direction, it will make python maximum recursion depth exceeded.
         fan_index = int(re.findall(r"Fantray(\d+)_\d+", fan_name)[0])
         direction_cmd = Fan_Direction_Cmd.format(fan_index - 1)
@@ -95,9 +109,15 @@ class Fan(PddfFan):
             if not color_data:
                 print("Fail! Can't set fan%s status led to %s.Cause fan doesn't have this module"
                       % (self.fantray_index, color))
+                status_ctl, result_ctl = self.helper.ipmi_raw(Led_Auto_Control)
+                if not status_ctl:
+                    print("Fail! Set LED mode to Auto Control fail!")
                 return False
             set_color_cmd = Set_Led_Color.format(hex(self.fantray_index + 3), color_data)
             status, result = self.helper.ipmi_raw(set_color_cmd)
+            status_ctl, result_ctl = self.helper.ipmi_raw(Led_Auto_Control)
+            if not status_ctl:
+                print("Fail! Set LED mode to Auto Control fail!")
             if not status:
                 print("Fail! Set fan%s to %s fail" % (self.fantray_index, color))
             return status

@@ -1,10 +1,14 @@
 try:
     from sonic_platform_pddf_base.pddf_eeprom import PddfEeprom
+    import os
 except ImportError as e:
     raise ImportError(str(e) + "- required module not found")
 
+CACHE_ROOT = '/var/cache/sonic/decode-syseeprom'
+CACHE_FILE = 'syseeprom_cache'
 
 class Eeprom(PddfEeprom):
+
     _TLV_DISPLAY_VENDOR_EXT = True
     _TLV_INFO_MAX_LEN = 256
     pddf_obj = {}
@@ -24,13 +28,32 @@ class Eeprom(PddfEeprom):
 
         super(PddfEeprom, self).__init__(self.eeprom_path, 0, '', True)
         self.eeprom_tlv_dict = dict()
+        
+        # Create the cache directory if not created
+        if not os.path.exists(CACHE_ROOT):
+            try:
+                os.makedirs(CACHE_ROOT)
+            except Exception as e:
+                print("Error in creating Eeprom cache directory - {}".format(str(e)))
+
+        # Assign cache_name in eeprom_base.py
+        try:
+            self.set_cache_name(os.path.join(CACHE_ROOT, CACHE_FILE))
+        except:
+            pass
+
         try:
             self.eeprom_data = self.read_eeprom()
-        except Exception as E:
+        except Exception as e:
             self.eeprom_data = "N/A"
-            raise RuntimeError("PddfEeprom is not Programmed - Error: {}".format(str(E)))
+            raise RuntimeError("PddfEeprom is not Programmed - Error: {}".format(str(e)))
         else:
             eeprom = self.eeprom_data
+            
+            try:
+                self.update_cache(eeprom)
+            except:
+                pass
 
             if not self.is_valid_tlvinfo_header(eeprom):
                 return
@@ -43,15 +66,16 @@ class Eeprom(PddfEeprom):
                 if not self.is_valid_tlv(eeprom[tlv_index:]):
                     break
 
-                tlv = eeprom[tlv_index:tlv_index + 2 + (eeprom[tlv_index + 1])]
-                code = "0x%02X" % tlv[0]
+                tlv = eeprom[tlv_index:tlv_index + 2
+                             + (eeprom[tlv_index + 1])]
+                code = "0x%02X" % ((tlv[0]))
 
                 if (tlv[0]) == self._TLV_CODE_VENDOR_EXT:
                     name = "Vendor Extension"
                     value = ""
                     if self._TLV_DISPLAY_VENDOR_EXT:
-                        for c in tlv[2:2 + tlv[1]]:
-                            value += "0x%02X " % c
+                       for c in tlv[2:2 + tlv[1]]:
+                           value += "0x%02X " % c
                 else:
                     name, value = self.decoder(None, tlv)
 
@@ -59,5 +83,7 @@ class Eeprom(PddfEeprom):
                 if (eeprom[tlv_index]) == self._TLV_CODE_CRC_32:
                     break
 
-                tlv_index += (eeprom[tlv_index + 1]) + 2
+                tlv_index += (eeprom[tlv_index+1]) + 2
 
+
+    # Provide the functions/variables below for which implementation is to be overwritten

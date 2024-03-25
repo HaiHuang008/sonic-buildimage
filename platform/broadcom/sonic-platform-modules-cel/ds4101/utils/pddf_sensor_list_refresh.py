@@ -6,6 +6,7 @@
 # @Author : jiang tao
 
 import os
+import subprocess
 import time
 
 try:
@@ -26,15 +27,26 @@ def write_sensor_list_info():
     """
     try:
         info = os.popen("ipmitool sensor list").read()
-        if "System_Event" in info:
+        if "System Event" in info:
             with open(sensor_info_path, "w") as f:
                 f.write(info)
     except Exception as E:
         log.log_error(str(E))
 
 
+def sync_sensor_list_info():
+    """
+    Sync the log sensor_info.log into docker pmon
+    """
+    try:
+        cmd = "docker cp {} pmon:{}".format(sensor_info_path, sensor_info_path)
+        p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    except Exception as E:
+        pass
+
+
 if __name__ == '__main__':
-    if os.popen("cat /usr/local/bin/bmc_present").read().strip() == "True":
-        while 1:
-            write_sensor_list_info()
-            time.sleep(refresh_interval)
+    while 1:
+        write_sensor_list_info()
+        sync_sensor_list_info()
+        time.sleep(refresh_interval)
