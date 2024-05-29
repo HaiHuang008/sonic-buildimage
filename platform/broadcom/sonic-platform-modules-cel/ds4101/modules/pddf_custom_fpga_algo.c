@@ -300,8 +300,10 @@ static int ocores_poll_wait(struct fpgalogic_i2c *i2c)
 				val &=(~tmp);
 				xiic_setreg32(i2c, XIIC_CR_REG_OFFSET, val);
 				xiic_setreg32(i2c, XIIC_IISR_OFFSET, XIIC_INTR_ARB_LOST_MASK);
-				printk("%s: TRANSFER STATUS ERROR, ISR: bit 0x%x happens\n",
+				#if DEBUG
+				pddf_dbg(FPGA, KERN_INFO "%s: TRANSFER STATUS ERROR, ISR: bit 0x%x happens\n",
 					 __func__, XIIC_INTR_ARB_LOST_MASK);
+				#endif
 			} 
 			if (status & XIIC_INTR_TX_ERROR_MASK) {
 				int sta = 0;
@@ -309,8 +311,10 @@ static int ocores_poll_wait(struct fpgalogic_i2c *i2c)
 				sta = xiic_getreg32(i2c,XIIC_SR_REG_OFFSET);
 				cr = xiic_getreg32(i2c,XIIC_CR_REG_OFFSET);
 				xiic_setreg32(i2c, XIIC_IISR_OFFSET, XIIC_INTR_TX_ERROR_MASK);
-				printk("%s: TRANSFER STATUS ERROR, ISR: bit 0x%x happens; SR: bit 0x%x; CR: bit 0x%x\n",
+				#if DEBUG
+				pddf_dbg(FPGA, KERN_INFO "%s: TRANSFER STATUS ERROR, ISR: bit 0x%x happens; SR: bit 0x%x; CR: bit 0x%x\n",
 					 __func__, status, sta, cr);
+				#endif
 			}
 			/* Soft reset IIC controller. */
 			xiic_setreg32(i2c, XIIC_RESETR_OFFSET, XIIC_RESET_MASK);
@@ -320,10 +324,11 @@ static int ocores_poll_wait(struct fpgalogic_i2c *i2c)
 		}
 		mutex_unlock(&i2c->lock);
 	}
-	
+#if DEBUG
 	if (err)
-		printk("%s: STATUS timeout, bit 0x%x did not clear in 50ms\n",
+		pddf_dbg(FPGA, KERN_INFO "%s: STATUS timeout, bit 0x%x did not clear in 50ms\n",
 			 __func__, status);
+#endif
 	return err;
 }
 

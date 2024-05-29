@@ -12,11 +12,13 @@ try:
     from . import helper
     from . import component
     from .watchdog import Watchdog
+    from .event import XcvrEvent
+    from .thermal import ThermalMon, THERMAL_THRESHOLDS
     from sonic_platform_pddf_base.pddf_chassis import PddfChassis
 except ImportError as e:
     raise ImportError(str(e) + "- required module not found")
 
-
+bcm_exist = helper.APIHelper().get_bmc_status()
 SET_SYS_STATUS_LED = "0x3A 0x39 0x2 0x0 {}"
 SET_LED_MODE_Manual = "0x3a 0x42 0x02 0x00"
 SET_LED_MODE_Auto = "0x3a 0x42 0x02 0x01"
@@ -26,14 +28,17 @@ class Chassis(PddfChassis):
     """
     PDDF Platform-specific Chassis class
     """
-    sfp_status_dict = {}
 
     def __init__(self, pddf_data=None, pddf_plugin_data=None):
         self.helper = helper.APIHelper()
         PddfChassis.__init__(self, pddf_data, pddf_plugin_data)
-        for port_idx in range(1, self.platform_inventory['num_ports'] + 1):
-            present = self.get_sfp(port_idx).get_presence()
-            self.sfp_status_dict[port_idx] = '1' if present else '0'
+
+        if not bcm_exist:
+            thermal_count = len(self._thermal_list)
+            thermal_monitor_sensors = sorted(THERMAL_THRESHOLDS.keys())
+            for idx, name in enumerate(thermal_monitor_sensors):
+                thermal = ThermalMon(thermal_count + idx, name)
+                self._thermal_list.append(thermal)
 
         for index in range(self.platform_inventory['num_component']):
             component_obj = component.Component(index)
@@ -60,23 +65,29 @@ class Chassis(PddfChassis):
         return self.get_system_led("SYS_LED")
 
     def set_status_led(self, color):
-        if color == self.get_status_led():
-            return False
+        if bcm_exist:
+            if color == self.get_status_led():
+                return False
 
-        status, res = self.helper.ipmi_raw(SET_LED_MODE_Manual)
-        if status != 0:
-            self.helper.ipmi_raw(SET_LED_MODE_Auto)
-            return False
+            status, res = self.helper.ipmi_raw(SET_LED_MODE_Manual)
+            if status != 0:
+                self.helper.ipmi_raw(SET_LED_MODE_Auto)
+                return False
 
-        color_val = "0x1"
-        if color == "green":
             color_val = "0x1"
-        elif color == "amber":
-            color_val = "0x2"
+            if color == "green":
+                color_val = "0x1"
+            elif color == "amber":
+                color_val = "0x2"
 
-        status, res = self.helper.ipmi_raw(SET_SYS_STATUS_LED.format(color_val))
-        self.helper.ipmi_raw(SET_LED_MODE_Auto)
-        return True if status else False
+            status, res = self.helper.ipmi_raw(SET_SYS_STATUS_LED.format(color_val))
+            self.helper.ipmi_raw(SET_LED_MODE_Auto)
+            return True if status else False
+        else:
+            if color == self.get_status_led():
+                return False
+            result = self.set_system_led("SYS_LED", color)
+            return result
 
     def get_sfp(self, index):
         """
@@ -161,31 +172,14 @@ class Chassis(PddfChassis):
         return self._watchdog
 
     def get_change_event(self, timeout=0):
-        sfp_dict = {}
+        # SFP event
+        if self.get_num_sfps() == 0:
+            for index in range(self.platform_inventory['num_ports']):
+                sfp = Sfp(index, self.pddf_obj, self.plugin_data)
+                self._sfp_list.append(sfp)
 
-        sfp_removed = '0'
-        sfp_inserted = '1'
+        succeed, sfp_event = XcvrEvent(self._sfp_list).get_xcvr_event(timeout)
+        if succeed:
+            return True, {'sfp': sfp_event}
 
-        sfp_present = True
-        sfp_absent = False
-
-        start_time = time.time()
-        time_period = timeout / float(1000)  # Convert msecs to secss
-
-        while time.time() < (start_time + time_period) or timeout == 0:
-            for port_idx in range(1, self.platform_inventory['num_ports'] + 1):
-                if self.sfp_status_dict[port_idx] == sfp_removed and \
-                        self.get_sfp(port_idx).get_presence() == sfp_present:
-                    sfp_dict[port_idx] = sfp_inserted
-                    self.sfp_status_dict[port_idx] = sfp_inserted
-                elif self.sfp_status_dict[port_idx] == sfp_inserted and \
-                        self.get_sfp(port_idx).get_presence() == sfp_absent:
-                    sfp_dict[port_idx] = sfp_removed
-                    self.sfp_status_dict[port_idx] = sfp_removed
-
-            if sfp_dict:
-                return True, {'sfp': sfp_dict}
-
-            time.sleep(0.5)
-
-        return True, {'sfp': {}}  # Timeout
+        return False, {'sfp': {}}

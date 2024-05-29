@@ -8,7 +8,6 @@ try:
     import re
     import os
     from . import helper
-    from . import sensor_list_config
 except ImportError as e:
     raise ImportError(str(e) + "- required module not found")
 
@@ -22,13 +21,10 @@ class Psu(PddfPsu):
         PddfPsu.__init__(self, index, pddf_data, pddf_plugin_data)
         self.STATUS_LED_COLOR_BLUE = "blue"
         self.helper = helper.APIHelper()
-        if not os.path.exists(sensor_list_config.Sensor_List_Info):
-            cmd = "ipmitool sensor list > %s" % sensor_list_config.Sensor_List_Info
-            self.helper.run_command(cmd)
 
     @staticmethod
     def get_capacity():
-        return 550
+        return 2000
 
     @staticmethod
     def get_type():

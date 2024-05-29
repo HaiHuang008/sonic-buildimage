@@ -18,6 +18,7 @@
 #define XILINX_FPGA_VERSION            0x0000
 #define XILINX_FPGA_SCRATCH            0x0004
 #define XILINX_FPGA_REG_SIZE      0x2000
+#define FPGA_SW_TEMP     0x002C
 
 
 /*
@@ -116,6 +117,22 @@ static ssize_t get_fpga_version(struct device *dev, struct device_attribute *dev
     return sprintf(buf, "0x%8.8x\n", ioread32(fpga->base + XILINX_FPGA_VERSION) & 0xffffffff);
 }
 
+/**
+ * Show switch temperature
+ * @param  buf   register value in hexstring
+ * @return       number of bytes read, or an error code
+ */
+static ssize_t get_sw_internal_temp(struct device *dev,
+					struct device_attribute *devattr,
+					char *buf)
+{
+	struct fpga_priv *fpga = dev_get_drvdata(dev);
+	uint32_t value = 0;
+
+	value = ioread32(fpga->base + FPGA_SW_TEMP) & 0x3ffff;
+
+	return sprintf(buf, "%d\n", value);
+}
 
 /**
  * Store a value in a specific register address
@@ -213,6 +230,7 @@ static DEVICE_ATTR( getreg, 0600, get_fpga_reg_value, set_fpga_reg_address);
 static DEVICE_ATTR( setreg, 0200, NULL , set_fpga_reg_value);
 static DEVICE_ATTR( scratch, 0600, get_fpga_scratch, set_fpga_scratch);
 static DEVICE_ATTR( version, 0400, get_fpga_version, NULL);
+static DEVICE_ATTR( sw_internal_temp, 0400, get_sw_internal_temp, NULL);
 static BIN_ATTR_RO( dump, XILINX_FPGA_REG_SIZE);
 
 static struct bin_attribute *fpga_bin_attrs[] = {
@@ -224,6 +242,7 @@ static struct attribute *fpga_attrs[] = {
     &dev_attr_getreg.attr,
     &dev_attr_scratch.attr,
     &dev_attr_version.attr,
+    &dev_attr_sw_internal_temp.attr,
     &dev_attr_setreg.attr,
     NULL,
 };

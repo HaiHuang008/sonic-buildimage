@@ -8,6 +8,7 @@ import struct
 import subprocess
 from sonic_py_common import device_info
 from mmap import *
+import json
 
 HOST_CHK_CMD = "docker > /dev/null 2>&1"
 EMPTY_STRING = ""
@@ -144,3 +145,15 @@ class APIHelper(object):
         except Exception:
             status = False
         return status, result
+
+    @staticmethod
+    def get_bmc_status():
+        """
+        get bmc present by pddf-device.json
+        return: True(present), False(absent)
+        """
+        pddf_device_path = '/usr/share/sonic/platform/pddf/pddf-device.json'
+        with open(pddf_device_path) as f:
+            json_data = json.load(f)
+        bmc_present = json_data["PLATFORM"]["bmc_present"]
+        return True if bmc_present == "True" else False

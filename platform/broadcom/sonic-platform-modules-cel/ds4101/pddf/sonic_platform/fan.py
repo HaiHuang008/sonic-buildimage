@@ -11,11 +11,6 @@ except ImportError as e:
     raise ImportError(str(e) + "- required module not found")
 
 Fan_Direction_Cmd = "0x3a 0x62 {}"
-Set_Pwm_Cmd = "0x3a 0x63 0x02 {} {}"
-Disable_Fcs_mode = "0x3a 0x63 0x01 0x00"
-Led_Manual_Control = "0x3a 0x42 0x02 0x00"
-Led_Auto_Control = "0x3a 0x42 0x02 0x01"
-Set_Led_Color = "0x3a 0x39 0x02 {} {}"
 
 
 class Fan(PddfFan):
@@ -45,6 +40,16 @@ class Fan(PddfFan):
             return 'N/A'
 
         return super().get_direction()
+    
+    def get_speed_tolerance(self):
+        """
+        Retrieves the speed tolerance of the fan
+
+        Returns:
+            An integer, the percentage of variance from target speed which is
+                 considered tolerable
+        """
+        return 15 if "PSU" in self.get_name() else 25
 
     def get_speed_rpm(self):
         """
@@ -55,15 +60,15 @@ class Fan(PddfFan):
             An integer, Speed of fan in RPM
         """
         rpm_speed = super().get_speed_rpm()
-        if self.is_psu_fan:
-            return rpm_speed
-        else:
+        if self.helper.get_bmc_status():
+            if self.is_psu_fan:
+                return rpm_speed
             return (rpm_speed * 157)
+        return rpm_speed
 
     def get_speed(self):
         """
         Obtain the fan speed ratio (rpm/max rpm) according to the fan maximum rpm in the pd-plugin.json file
-
 
         returns: if the value > 100, return the value of rpm. else return Speed/percentage of maximum speed.
         """
@@ -73,85 +78,42 @@ class Fan(PddfFan):
             max_psu_fan_rpm = eval(self.plugin_data['PSU']['PSU_FAN_MAX_SPEED'])
             psu_speed_percentage = round(speed_rpm / max_psu_fan_rpm * 100)
             return speed_rpm if psu_speed_percentage > 100 else psu_speed_percentage
-
-        # if use 'get_direction' to get the fan direction, it will make python maximum recursion depth exceeded.
-        fan_index = int(re.findall(r"Fantray(\d+)_\d+", fan_name)[0])
-        direction_cmd = Fan_Direction_Cmd.format(fan_index - 1)
-        status, direction = self.helper.ipmi_raw(direction_cmd)
-        if status:
+        
+        if self.helper.get_bmc_status():
+            # if use 'get_direction' to get the fan direction, it will make python maximum recursion depth exceeded.
+            fan_index = int(re.findall(r"Fantray(\d+)_\d+", fan_name)[0])
+            direction_cmd = Fan_Direction_Cmd.format(fan_index - 1)
+            status, direction = self.helper.ipmi_raw(direction_cmd)
+            if not status:
+                return 0
             direction = str(int(direction, 16))
-            f_r_fan = "Front" if fan_name.endswith("1") else "Rear"
-            max_fan_rpm = eval(self.plugin_data['FAN']['FAN_MAX_RPM_SPEED'][direction][f_r_fan])
-            speed_percentage = round(speed_rpm / max_fan_rpm * 100)
-            return 100 if speed_percentage > 100 else speed_percentage
         else:
-            return 0
+            idx = (self.fantray_index - 1) * self.platform['num_fans_pertray'] + self.fan_index
+            attr = "fan" + str(idx) + "_direction"
+            output = self.pddf_obj.get_attr_name_output("FAN-CTRL", attr)
+            if not output:
+                return 0
+            direction = output['status'].rstrip()
 
-    def set_status_led(self, color):
-        """
-        Overwrite.
-        Set fans status led
-        return: True/False
-        """
+        f_r_fan = "Front" if fan_name.endswith("1") else "Rear"
+        max_fan_rpm = eval(self.plugin_data['FAN']['FAN_MAX_RPM_SPEED'][direction][f_r_fan])
+        speed_percentage = round(speed_rpm / max_fan_rpm * 100)
+        return 100 if speed_percentage > 100 else speed_percentage
+
+    def get_status_led(self):
         if self.is_psu_fan:
+            # Usually no led for psu_fan hence raise a NotImplementedError
             raise NotImplementedError
         else:
-            # set LED mode to Manual Control
-            status_ctl, result_ctl = self.helper.ipmi_raw(Led_Manual_Control)
-            if not status_ctl:
-                print("Fail! Set LED mode to Manual Control fail!")
-            color_dict = {
-                self.STATUS_LED_COLOR_OFF: "0",
-                self.STATUS_LED_COLOR_GREEN: "1",
-                self.STATUS_LED_COLOR_AMBER: "2",
-            }
-            color_data = color_dict.get(color.lower())
-            if not color_data:
-                print("Fail! Can't set fan%s status led to %s.Cause fan doesn't have this module"
-                      % (self.fantray_index, color))
-                status_ctl, result_ctl = self.helper.ipmi_raw(Led_Auto_Control)
-                if not status_ctl:
-                    print("Fail! Set LED mode to Auto Control fail!")
-                return False
-            set_color_cmd = Set_Led_Color.format(hex(self.fantray_index + 3), color_data)
-            status, result = self.helper.ipmi_raw(set_color_cmd)
-            status_ctl, result_ctl = self.helper.ipmi_raw(Led_Auto_Control)
-            if not status_ctl:
-                print("Fail! Set LED mode to Auto Control fail!")
-            if not status:
-                print("Fail! Set fan%s to %s fail" % (self.fantray_index, color))
-            return status
-
-    def set_speed(self, speed):
-        """
-        Sets the fan speed(pwm)
-
-        Args:
-            speed: An integer, the percentage of full fan speed to set fan to,
-                   in the range 0 (off) to 100 (full speed)
-
-        Returns:
-            A boolean, True if speed is set successfully, False if not
-        """
-        if speed < 20 or speed > 100:
-            print("Error: Invalid speed %d. Please provide a valid speed percentage(20~100)" % speed)
-            return False
-
-        # Disable FCS auto control mode
-        status, result = self.helper.ipmi_raw(Disable_Fcs_mode)
-        if not status:
-            print("Fail! Disable FCS auto control mode fail!")
-            return status
-
-        if self.is_psu_fan:
-            psu_data = 7 if str(self.fans_psu_index) == "1" else 8
-            set_pwm_cmd = Set_Pwm_Cmd.format(hex(psu_data), speed)
-            status, result = self.helper.ipmi_raw(set_pwm_cmd)
-            if not status:
-                print("Fail! Set PSU%d speed=%d fail!" % (self.fans_psu_index, speed))
-        else:
-            set_pwm_cmd = Set_Pwm_Cmd.format(hex(self.fantray_index - 1), speed)
-            status, result = self.helper.ipmi_raw(set_pwm_cmd)
-            if not status:
-                print("Fail! Set Fan%d speed=%d fail!" % (self.fantray_index, speed))
-        return status
+            fan_led_device = "FANTRAY{}".format(self.fantray_index) + "_LED"
+            if (not fan_led_device in self.pddf_obj.data.keys()):
+                # Implement a generic status_led color scheme
+                if self.get_status():
+                    return self.STATUS_LED_COLOR_GREEN
+                else:
+                    return self.STATUS_LED_COLOR_OFF
+            # Fix LED status of fan not in presence
+            if not self.get_presence():
+                return self.STATUS_LED_COLOR_OFF
+            result, color = self.pddf_obj.get_system_led_color(fan_led_device)
+            return (color)
